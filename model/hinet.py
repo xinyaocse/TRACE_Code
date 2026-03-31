@@ -17,7 +17,6 @@ class Hinet_stage(nn.Module):
             out = self.inv2(out)
             return out
         else:
-            # 反向过程
             out = self.inv2(x, rev=True)
             out = self.inv1(out, rev=True)
             return out
