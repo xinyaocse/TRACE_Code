@@ -29,7 +29,6 @@ import numpy as np
 
 
 def set_seed(seed=1234):
-    """设置随机种子"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -40,7 +39,6 @@ def set_seed(seed=1234):
 
 
 def auto_select_query_image(dataset_name: str, out_path: str):
-    """自动从数据集中选择一张查询图像"""
     dl = get_dataloader(dataset_name, split='test', batch_size=1, shuffle=True)
     for imgs, lbs in dl:
         pil_img = torchvision.transforms.ToPILImage()(imgs[0])
@@ -54,10 +52,8 @@ def auto_select_query_image(dataset_name: str, out_path: str):
 
 
 def ablation_no_iae(args, device):
-    """消融实验：不使用IAE增强，直接使用原始目标图像"""
     print("\n[Ablation] Running without IAE augmentation...")
 
-    # 加载查询图像
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -66,7 +62,6 @@ def ablation_no_iae(args, device):
 
     xq = load_image(args.query_img).to(device)
 
-    # 直接使用原始目标图像
     target_files = [os.path.join(args.target_imgs_dir, f) for f in os.listdir(args.target_imgs_dir)
                     if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     target_files.sort()
@@ -74,7 +69,6 @@ def ablation_no_iae(args, device):
     if not target_files:
         raise FileNotFoundError("[Ablation] No target images found in target_imgs_dir.")
 
-    # 使用多个目标图像
     xt_list = []
     for i in range(min(len(target_files), args.m)):
         xt_path = target_files[i]
@@ -82,11 +76,9 @@ def ablation_no_iae(args, device):
         xt_list.append(xt)
 
     print(f"[Ablation] Using {len(xt_list)} original target images")
-
-    # 加载替代模型
+    
     subs = load_substitute_models(args.dataset, args.substitute_dir, device)
 
-    # 计算目标特征的平均值
     avg_tgt_features = {}
     with torch.no_grad():
         for name, model in subs.items():
@@ -98,7 +90,6 @@ def ablation_no_iae(args, device):
                 target_feats.append(f)
             avg_tgt_features[name] = torch.stack(target_feats).mean(dim=0)
 
-    # 普通对抗攻击（不使用IAE增强的目标）
     delta = torch.zeros_like(xq, requires_grad=True).to(device)
     optimizer = torch.optim.Adam([delta], lr=config.iae_lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_iter)
@@ -106,14 +97,12 @@ def ablation_no_iae(args, device):
     best_loss = float('inf')
     best_delta = None
 
-    # 准备gallery数据加载器用于H度量
     if args.dataset in ['oxford5k', 'paris6k']:
         gallery_dataset = args.dataset.replace('_db', '') + '_db'
     else:
         gallery_dataset = args.dataset
     gallery_loader = get_dataloader(gallery_dataset, 'train', batch_size=32, shuffle=False)
 
-    # 预计算gallery特征
     gallery_features = precompute_gallery_features(subs, gallery_loader, device,
                                                    use_hash=True, binary=config.use_binary_hash)
 
@@ -122,10 +111,8 @@ def ablation_no_iae(args, device):
 
         adv_x = clamp(xq + delta, 0, 1)
 
-        # 计算损失
         total_loss = 0
 
-        # 需要梯度的特征计算
         for name, model in subs.items():
             adv_feat = get_hash_features(model, adv_x, model_name=name, binary=False)
             adv_feat = torch.tanh(adv_feat)
@@ -137,7 +124,6 @@ def ablation_no_iae(args, device):
 
             target_feat = avg_tgt_features[name].detach()
 
-            # Triplet loss
             pos_dist = F.pairwise_distance(adv_feat, target_feat)
             neg_dist = F.pairwise_distance(adv_feat, query_feat)
 
@@ -146,22 +132,18 @@ def ablation_no_iae(args, device):
 
             total_loss = total_loss + triplet_loss.mean() / len(subs)
 
-        # 添加H度量
         if step < 50 or step % 10 == 0:
             with torch.no_grad():
                 h_score = compute_h_metric_optimized(subs, adv_x, xq, gallery_features,
                                                      k=10, use_hash=True, binary=config.use_binary_hash)
             total_loss = total_loss - args.lambda_j * h_score
 
-        # 反向传播
         total_loss.backward()
 
-        # 限制梯度
         delta.grad.data.clamp_(-config.eps, config.eps)
         optimizer.step()
         scheduler.step()
 
-        # 限制扰动幅度
         delta.data = clamp(delta.data, -config.eps, config.eps)
 
         if total_loss.item() < best_loss:
@@ -171,10 +153,8 @@ def ablation_no_iae(args, device):
         if step % 50 == 0:
             print(f"  Step {step}/{args.max_iter}, loss={total_loss.item():.4f}")
 
-    # 生成最终对抗样本
     adv_final = clamp(xq + best_delta, 0, 1)
 
-    # 反归一化
     denorm = transforms.Normalize(
         mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225],
         std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
@@ -188,13 +168,10 @@ def ablation_no_iae(args, device):
 
 
 def ablation_no_rie(args, device):
-    """消融实验：不使用RIE，使用简单的对抗攻击"""
     print("\n[Ablation] Running without RIE module...")
 
-    # 加载查询图像
     xq = load_image(args.query_img).to(device)
 
-    # 使用IAE增强后的目标图像
     xt_list = []
     iae_files = sorted([f for f in os.listdir(args.IAE_path) if f.startswith('IAE_')])
 
@@ -208,10 +185,8 @@ def ablation_no_rie(args, device):
 
     print(f"[Ablation] Using {len(xt_list)} IAE-augmented target images")
 
-    # 加载替代模型
     subs = load_substitute_models(args.dataset, args.substitute_dir, device)
 
-    # 简单的对抗攻击（不使用RIE）
     delta = torch.zeros_like(xq, requires_grad=True).to(device)
     optimizer = torch.optim.Adam([delta], lr=config.lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_iter)
@@ -219,18 +194,15 @@ def ablation_no_rie(args, device):
     best_loss = float('inf')
     best_delta = None
 
-    # 准备gallery数据加载器用于H度量
     if args.dataset in ['oxford5k', 'paris6k']:
         gallery_dataset = args.dataset.replace('_db', '') + '_db'
     else:
         gallery_dataset = args.dataset
     gallery_loader = get_dataloader(gallery_dataset, 'train', batch_size=32, shuffle=False)
 
-    # 预计算gallery特征
     gallery_features = precompute_gallery_features(subs, gallery_loader, device,
                                                    use_hash=True, binary=config.use_binary_hash)
 
-    # 预计算目标特征
     target_features_cache = {}
     with torch.no_grad():
         for name, model in subs.items():
