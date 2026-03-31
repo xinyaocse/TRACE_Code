@@ -60,7 +60,6 @@ def blackbox_query_qair_style(dataset_name, victim_model, device, z=None, k=None
 
     from dataset import get_dataloader
 
-    # 获取数据集
     if dataset_name in ['oxford5k_db', 'paris6k_db']:
         db_loader = get_dataloader(dataset_name, 'db', batch_size=32, shuffle=False)
     else:
@@ -83,7 +82,7 @@ def blackbox_query_qair_style(dataset_name, victim_model, device, z=None, k=None
     print(f"[BlackBox Query] Database size: {len(db_samples)}")
 
     query_results = []
-    initial_count = min(10, len(db_samples))  # 增加初始查询数
+    initial_count = min(10, len(db_samples))  
     initial_indices = random.sample(range(len(db_samples)), initial_count)
 
     img_save_dir = os.path.join("./substitute_data_images", dataset_name)
@@ -141,7 +140,7 @@ def blackbox_query_qair_style(dataset_name, victim_model, device, z=None, k=None
                     next_queries.append(idx)
 
             query_results.append(query_entry)
-        current_queries = next_queries[:min(200, len(next_queries))]  # 增加到200
+        current_queries = next_queries[:min(200, len(next_queries))] 
 
     print(f"[BlackBox Query] Total queries collected: {len(query_results)}")
     return query_results, img_save_dir
@@ -171,7 +170,7 @@ class SubstituteDataset(Dataset):
             topk_sorted = sorted(query['topk_results'], key=lambda x: x['rank'])
 
             for i in range(len(topk_sorted)):
-                for j in range(i + 1, min(i + 5, len(topk_sorted))):  # 增加对数
+                for j in range(i + 1, min(i + 5, len(topk_sorted))): 
                     self.rankings.append({
                         'query': q_img_path,
                         'xi': topk_sorted[i]['img_path'],
@@ -191,7 +190,7 @@ class SubstituteDataset(Dataset):
         img_tensor = self.transform(img)
 
         ranking_info = None
-        if len(self.rankings) > 0 and random.random() < 0.7:  # 增加使用ranking loss的概率
+        if len(self.rankings) > 0 and random.random() < 0.7:  
             ranking_idx = random.randint(0, len(self.rankings) - 1)
             ranking_info = self.rankings[ranking_idx]
 
@@ -199,7 +198,6 @@ class SubstituteDataset(Dataset):
 
 
 def substitute_collate_fn(batch):
-    """自定义collate函数来处理包含字典的批次数据"""
     imgs = []
     target_feats = []
     ranking_infos = []
@@ -304,7 +302,7 @@ def train_single_substitute(model_name, dataset, device, out_dim=64, epochs=20, 
 
             if rank_count > 0:
                 rank_loss = rank_loss / rank_count
-                total_loss = mse_loss + 0.3 * rank_loss  # 增加ranking loss权重
+                total_loss = mse_loss + 0.3 * rank_loss 
             else:
                 total_loss = mse_loss
                 rank_loss = torch.tensor(0.0)
@@ -361,33 +359,27 @@ def main():
     print("[Main] Loading victim model...")
     victim_model = load_victim_model(args.victim_ckpt, args.backbone, args.out_dim, device)
 
-    # 检查是否已有查询结果
     query_results_file = f"./query_results_{args.dataset_name}.pt"
     if os.path.exists(query_results_file):
         print(f"[Main] Loading existing query results from {query_results_file}")
         query_results = torch.load(query_results_file)
         img_save_dir = os.path.join("./substitute_data_images", args.dataset_name)
     else:
-        # 执行黑盒查询
         print("[Main] Performing black-box queries...")
         query_results, img_save_dir = blackbox_query_qair_style(
             args.dataset_name, victim_model, device, z=args.z, k=args.k
         )
 
-        # 保存查询结果
         torch.save(query_results, query_results_file)
         print(f"[Main] Saved query results to {query_results_file}")
 
-    # 创建替代模型训练数据集
     print("[Main] Creating substitute dataset...")
     sub_dataset = SubstituteDataset(query_results)
     print(f"[Main] Substitute dataset size: {len(sub_dataset)}")
     print(f"[Main] Number of ranking pairs: {len(sub_dataset.rankings)}")
 
-    # 训练替代模型集合（包括所有模型）
     os.makedirs(args.out_path, exist_ok=True)
 
-    # 训练所有模型（不排除受害模型）
     all_models = ["alexnet", "vgg16", "resnet50", "densenet121","ViT","Clip"]
 
     print(f"[Main] Training substitute models: {all_models}")
