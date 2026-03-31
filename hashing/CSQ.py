@@ -17,7 +17,6 @@ import numpy as np
 
 
 def set_seed(seed=1234):
-    """设置随机种子"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -28,9 +27,6 @@ def set_seed(seed=1234):
 
 
 def build_csq_backbone(backbone='resnet50', bit=64):
-    """
-    构建CSQ哈希backbone，将最后一层改为 bit 维输出
-    """
     if backbone == 'alexnet':
         net = torchvision.models.alexnet(pretrained=True)
         net.classifier[-1] = nn.Linear(4096, bit)
@@ -57,9 +53,6 @@ def build_csq_backbone(backbone='resnet50', bit=64):
 
 
 class CSQLoss(nn.Module):
-    """
-    增强的CSQ损失函数：分类CE + 量化约束 + 中心损失 + Triplet-boundary
-    """
 
     def __init__(self, bit, n_class, center_weight=0.1, quant_weight=0.1, triplet_weight=0.1):
         super().__init__()
@@ -70,39 +63,29 @@ class CSQLoss(nn.Module):
         self.quant_weight = quant_weight
         self.triplet_weight = triplet_weight
 
-        # 添加类别中心，用于让同类样本的哈希码更紧凑
         self.register_buffer('centers', torch.randn(n_class, bit))
 
     def forward(self, u, y, update_centers=True):
-        # 1. 分类损失
         loss_ce = self.ce(u, y)
 
-        # 2. 量化损失 - 让哈希码接近 +1 或 -1
         loss_quant = ((u.abs() - 1.0) ** 2).mean()
 
-        # 3. 中心损失 - 让同类样本的哈希码更接近
         loss_center = 0.0
-        if self.n_class > 1:  # 只在多类别时使用中心损失
+        if self.n_class > 1:
             batch_size = u.size(0)
 
-            # 获取每个样本对应的中心
             batch_centers = self.centers.index_select(0, y)
 
-            # 计算到中心的距离
             loss_center = ((u - batch_centers) ** 2).sum() / batch_size
 
-            # 更新中心（使用动量更新）
             if update_centers and self.training:
                 with torch.no_grad():
-                    # 计算每个类别的新中心
                     for i in range(self.n_class):
                         mask = (y == i)
                         if mask.sum() > 0:
-                            # 动量更新
                             new_center = u[mask].mean(0)
                             self.centers[i] = 0.9 * self.centers[i] + 0.1 * new_center
 
-        # 4. Triplet-boundary损失
         loss_triplet = 0.0
         if self.n_class > 1:
             batch_size = u.size(0)
@@ -112,16 +95,13 @@ class CSQLoss(nn.Module):
                 anchor = u[i]
                 anchor_label = y[i]
 
-                # 找到正样本和负样本
                 pos_mask = (y == anchor_label) & (torch.arange(batch_size, device=device) != i)
                 neg_mask = (y != anchor_label)
 
                 if pos_mask.sum() > 0 and neg_mask.sum() > 0:
-                    # 计算到所有正负样本的距离
                     pos_dists = torch.norm(u[pos_mask] - anchor.unsqueeze(0), p=2, dim=1)
                     neg_dists = torch.norm(u[neg_mask] - anchor.unsqueeze(0), p=2, dim=1)
 
-                    # 选择最难的正负样本对
                     hardest_pos_dist = pos_dists.max()
                     hardest_neg_dist = neg_dists.min()
 
@@ -141,7 +121,7 @@ def get_dataloader_for_csq(dataset, batch_size):
     import torchvision.transforms as transforms
     from torchvision.datasets import MNIST, CIFAR10
 
-    num_workers = min(8, os.cpu_count())  # 动态设置workers数量
+    num_workers = min(8, os.cpu_count()) 
 
     if dataset == 'mnist':
         transform = transforms.Compose([
@@ -183,12 +163,10 @@ def train_csq(dataset, backbone, bit, epochs, center_w, batch_size):
     loader, n_class = get_dataloader_for_csq(dataset, batch_size)
     net = build_csq_backbone(backbone, bit).to(device)
 
-    # 使用增强的损失函数（包含Triplet-boundary）
     criterion = CSQLoss(bit, n_class, center_weight=center_w, quant_weight=0.01, triplet_weight=0.1).to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
 
-    # 添加学习率调度器
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     best_loss = float('inf')
@@ -207,7 +185,6 @@ def train_csq(dataset, backbone, bit, epochs, center_w, batch_size):
             loss = criterion(out, lbs)
             loss.backward()
 
-            # 梯度裁剪
             torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)
 
             optimizer.step()
@@ -220,7 +197,6 @@ def train_csq(dataset, backbone, bit, epochs, center_w, batch_size):
 
         scheduler.step()
 
-        # 保存最佳模型
         if avg_loss < best_loss:
             best_loss = avg_loss
             no_improve_count = 0
@@ -231,7 +207,6 @@ def train_csq(dataset, backbone, bit, epochs, center_w, batch_size):
         else:
             no_improve_count += 1
 
-        # 早停
         if no_improve_count >= patience and ep > epochs // 2:
             print(f"[CSQ] Early stopping at epoch {ep + 1}")
             break
@@ -247,7 +222,6 @@ def main():
     parser.add_argument('--batch_size', type=int, default=128)
     args = parser.parse_args()
 
-    # 设置随机种子
     set_seed(1234)
 
     train_csq(args.dataset, args.backbone, args.bit, args.epochs, args.center_loss_w, args.batch_size)
