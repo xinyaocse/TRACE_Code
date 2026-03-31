@@ -103,7 +103,7 @@ def run_dataset_pipeline(
 
     models_to_train = ["alexnet", "vgg16", "resnet50", "densenet121","ViT","Clip"]
     if backbone in models_to_train:
-        models_to_train.remove(backbone)  # 排除受害模型
+        models_to_train.remove(backbone) 
 
     all_exist = True
     for model in models_to_train:
@@ -194,7 +194,6 @@ def generate_summary_report():
 
     for dataset in datasets:
         for backbone in backbones:
-            # 检查结果文件
             TRACE_result = f"./TRACE_outputs_{dataset}_{backbone}/adv_final.png"
             no_iae_result = f"./Ablation_{dataset}_{backbone}_noIAE/adv_noIAE.png"
             no_rie_result = f"./Ablation_{dataset}_{backbone}_noRIE/adv_noRIE.png"
