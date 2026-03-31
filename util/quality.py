@@ -12,14 +12,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 loss_on_vgg = lpips.LPIPS(net='vgg').to(device)
 
 def compare_images(img1_path, img2_path):
-    """
-    ȫ��Ա�����ͼƬ��
-    - MSE
-    - PSNR
-    - SSIM
-    - LPIPS
-    - l2, l_inf
-    """
     transform = T.ToTensor()
 
     img1 = Image.open(img1_path).convert('RGB')
