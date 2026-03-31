@@ -5,8 +5,6 @@ import torch.nn as nn
 from modules.module_util import initialize_weights
 
 class ResidualDenseBlock_out(nn.Module):
-    """RRDB结构"""
-
     def __init__(self, inp, outp, nf=3, gc=32, bias=True, use_snorm=False):
         super(ResidualDenseBlock_out, self).__init__()
         self.conv1 = nn.Conv2d(inp, 32, 3, 1, 1, bias=bias)
