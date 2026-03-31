@@ -78,10 +78,10 @@ def dwt_init(x):
     x3 = x01[:, :, :, 1::2]
     x4 = x02[:, :, :, 1::2]
 
-    x_LL = x1 + x2 + x3 + x4  # 低频分量
-    x_HL = -x1 - x2 + x3 + x4  # 水平高频
-    x_LH = -x1 + x2 - x3 + x4  # 垂直高频
-    x_HH = x1 - x2 - x3 + x4  # 对角高频
+    x_LL = x1 + x2 + x3 + x4
+    x_HL = -x1 - x2 + x3 + x4
+    x_LH = -x1 + x2 - x3 + x4
+    x_HH = x1 - x2 - x3 + x4
 
     return torch.cat([x_LL, x_HL, x_LH, x_HH], dim=1)
 
@@ -272,7 +272,7 @@ def TRACE_attack_main():
         raise FileNotFoundError(f"[Error] No IAE results found in {args.IAE_path}")
 
     print(f"[TRACE] Loading {len(iae_files)} IAE-augmented target images...")
-    for iae_file in iae_files[:args.m]:  # 使用m个目标样本
+    for iae_file in iae_files[:args.m]: 
         iae_path = os.path.join(args.IAE_path, iae_file)
         xt_pil = Image.open(iae_path).convert('RGB')
         xt = transform(xt_pil).unsqueeze(0).to(device)
@@ -323,7 +323,7 @@ def TRACE_attack_main():
         adv_img = iwt_init(adv_dwt)
         adv_img = clamp(adv_img, 0, 1)
 
-        if step < 50 or step % 5 == 0:  # 调整H度量计算频率
+        if step < 50 or step % 5 == 0: 
             f_loss = compute_TRACE_loss_optimized(
                 adv_img, xq, xt_list, subs, gallery_features,
                 device, lambda_f=config.lamda_per, lambda_j=args.lambda_j,
