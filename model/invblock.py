@@ -6,9 +6,6 @@ from .denseblock import Dense
 import config as c
 
 class INV_block_affine(nn.Module):
-    """
-    可逆信息交换关键结构 (ψ, φ, ρ, η) × clamp
-    """
 
     def __init__(self, subnet_constructor=Dense, clamp=c.clamp, harr=True, in_1=3, in_2=3):
         super().__init__()
@@ -28,10 +25,6 @@ class INV_block_affine(nn.Module):
         return torch.exp(self.clamp * 2 * (torch.sigmoid(s) - 0.5))
 
     def forward(self, x, rev=True):
-        """
-        正向：x -> y
-        rev=True 时可实现逆过程
-        """
         if not rev:
             x1 = x[:, :self.split_len1, :, :]
             x2 = x[:, self.split_len1:self.split_len1+self.split_len2, :, :]
@@ -44,6 +37,5 @@ class INV_block_affine(nn.Module):
             y2 = self.e(s1) * x2 + t1
             return torch.cat([y1, y2], dim=1)
         else:
-            # 若需要可逆逆过程, 这里可实现
             raise NotImplementedError("Reverse pass not implemented here.")
 
